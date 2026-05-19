@@ -28,12 +28,13 @@ const DanhSachGiangVien = () => {
   const [registeredLecturer, setRegisteredLecturer] = useState(null);
 
   // Lấy danh sách giảng viên
-  const { data: lecturers = [], isLoading: loadingLecturers } = useQuery({
+  const { data: lecturers = [], isLoading: loadingLecturers, error: errorLecturers } = useQuery({
     queryKey: ['lecturersWithSlots'],
     queryFn: async () => {
       const res = await apiClient.get('/lecturer/list-with-slots');
       return res.data.data || [];
     },
+    retry: false,
   });
 
   // Lấy thông tin sinh viên đã đăng ký giảng viên nào
@@ -75,10 +76,41 @@ const DanhSachGiangVien = () => {
     },
   });
 
+  const cancelMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiClient.delete('/student/cancel-lecturer');
+      return res.data;
+    },
+    onSuccess: (data) => {
+      message.success(data.message || 'Hủy đăng ký thành công!');
+      setRegisteredLecturer(null);
+      queryClient.setQueryData(['myLecturerRegistration'], null);
+      queryClient.invalidateQueries({ queryKey: ['myLecturerRegistration'] });
+      queryClient.invalidateQueries({ queryKey: ['lecturersWithSlots'] });
+    },
+    onError: (error) => {
+      const errorMsg = error.response?.data?.message || error.message || 'Hủy đăng ký thất bại!';
+      message.error(errorMsg);
+    },
+  });
+
   if (loadingLecturers || loadingMyLecturer) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
         <Spin size="large" tip="Đang tải..." />
+      </div>
+    );
+  }
+
+  if (errorLecturers) {
+    return (
+      <div style={{ padding: '20px' }}>
+        <Alert
+          message="Không thể hiển thị danh sách"
+          description={errorLecturers.response?.data?.message || 'Có lỗi xảy ra'}
+          type="error"
+          showIcon
+        />
       </div>
     );
   }
@@ -100,19 +132,27 @@ const DanhSachGiangVien = () => {
         {isStudentRegistered && myLecturer && (
           <Alert
             message={`Bạn đã đăng ký: ${myLecturer.ten_giang_vien}`}
+            description={
+              <div style={{ marginTop: '10px' }}>
+                <Button 
+                  danger 
+                  loading={cancelMutation.isPending}
+                  onClick={() => {
+                    Modal.confirm({
+                      title: 'Xác nhận hủy đăng ký',
+                      content: 'Bạn có chắc chắn muốn hủy giảng viên này không? Bạn có thể bị mất slot nếu người khác đăng ký!',
+                      okText: 'Có, Hủy',
+                      cancelText: 'Không',
+                      onOk: () => cancelMutation.mutate(),
+                    });
+                  }}
+                >
+                  Hủy đăng ký giảng viên
+                </Button>
+              </div>
+            }
             type="success"
             icon={<CheckCircleOutlined />}
-            showIcon
-            style={{ marginBottom: '16px' }}
-            closable
-          />
-        )}
-        
-        {isStudentRegistered && (
-          <Alert
-            message="Bạn đã đăng ký hướng dẫn. Hệ thống hiện không cho phép thay đổi."
-            type="info"
-            icon={<ClockCircleOutlined />}
             showIcon
             style={{ marginBottom: '16px' }}
           />

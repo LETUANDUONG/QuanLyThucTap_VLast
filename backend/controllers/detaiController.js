@@ -23,7 +23,7 @@ export const dangKyDeTai = async (req, res) => {
         request.input('muc_tieu_nghien_cuu', sql.NVarChar, muc_tieu_nghien_cuu || null);
         request.input('cong_nghe_de_xuat', sql.NVarChar, cong_nghe_de_xuat || null);
         const resultDeTai = await request.query(`
-          SELECT dt.so_luong_toi_da, dt.so_luong_da_dang_ky, dt.version, dot.ngay_bd_dang_ky, dot.ngay_kt_dang_ky
+          SELECT dt.so_luong_toi_da, dt.so_luong_da_dang_ky, dt.version, dt.dot_thuc_tap_id, dt.giang_vien_hd_id, dot.ngay_bd_dang_ky, dot.ngay_kt_dang_ky
           FROM DeTai dt
           LEFT JOIN DotThucTap dot ON dt.dot_thuc_tap_id = dot.id
           WHERE dt.id = @de_tai_id
@@ -37,6 +37,25 @@ export const dangKyDeTai = async (req, res) => {
         const detai = resultDeTai.recordset[0];
         const now = new Date();
         
+        // Kiểm tra sinh viên có thuộc đợt thực tập của đề tài không
+        const svInfo = await request.input('sv_id_check', sql.Int, studentId).query(`SELECT dot_thuc_tap_id FROM NguoiDung WHERE id = @sv_id_check`);
+        const svDot = svInfo.recordset[0]?.dot_thuc_tap_id;
+        if (!svDot || svDot !== detai.dot_thuc_tap_id) {
+            await transaction.rollback();
+            return res.status(403).json({ message: 'Bạn chưa được phân vào đợt thực tập của đề tài này!' });
+        }
+
+        // Kiểm tra xem sinh viên đã chọn giảng viên chưa, và có khớp với giảng viên của đề tài không
+        const checkGv = await request.query(`SELECT giang_vien_id FROM DangKyHuongDan WHERE sinh_vien_id = @sv_id_check`);
+        if (checkGv.recordset.length === 0) {
+            await transaction.rollback();
+            return res.status(403).json({ message: 'Bạn phải đăng ký Giảng viên hướng dẫn trước!' });
+        }
+        if (checkGv.recordset[0].giang_vien_id !== detai.giang_vien_hd_id) {
+            await transaction.rollback();
+            return res.status(403).json({ message: 'Bạn chỉ có thể đăng ký đề tài của giảng viên mà bạn đã chọn!' });
+        }
+
         // 1.1 Kiểm tra thời gian đăng ký của Đợt thực tập
         if (detai.ngay_bd_dang_ky && detai.ngay_kt_dang_ky) {
             if (now < new Date(detai.ngay_bd_dang_ky) || now > new Date(detai.ngay_kt_dang_ky)) {
@@ -171,6 +190,7 @@ export const getDanhSachDeTai = async (req, res) => {
       JOIN DotThucTap dt ON d.dot_thuc_tap_id = dt.id
       WHERE d.trang_thai_duyet = 'DA_DUYET' 
         AND dt.trang_thai = 'ACTIVE'
+        AND d.giang_vien_hd_id = (SELECT TOP 1 giang_vien_id FROM DangKyHuongDan WHERE sinh_vien_id = @sv_id)
         AND (
           d.ten_de_tai LIKE @search
           OR d.cong_nghe_su_dung LIKE @search
@@ -239,9 +259,40 @@ export const createDeTai = async (req, res) => {
 
   try {
     const pool = await connectDb();
+
+    if (user.role === 'LECTURER') {
+      return res.status(403).json({ message: 'Giảng viên không được quyền đề xuất đề tài.' });
+    }
     
+    let gv_id = giang_vien_hd_id || null; 
+
+    if (user.role === 'STUDENT') {
+      // 1. Ktra thời gian đăng ký đợt thực tập
+      const svInfo = await pool.request().input('sv_id', sql.Int, user.id).query(`
+        SELECT nd.dot_thuc_tap_id, dt.ngay_bd_dang_ky, dt.ngay_kt_dang_ky
+        FROM NguoiDung nd 
+        LEFT JOIN DotThucTap dt ON nd.dot_thuc_tap_id = dt.id 
+        WHERE nd.id = @sv_id
+      `);
+      const dotInfo = svInfo.recordset[0];
+      const now = new Date();
+      if (dotInfo?.ngay_bd_dang_ky && dotInfo?.ngay_kt_dang_ky) {
+        if (now < new Date(dotInfo.ngay_bd_dang_ky) || now > new Date(dotInfo.ngay_kt_dang_ky)) {
+          return res.status(403).json({ message: 'Hiện không trong thời gian đăng ký đợt thực tập!' });
+        }
+      }
+
+      // 2. Ktra đã có gv chưa
+      const checkGv = await pool.request().input('sv_id_check', sql.Int, user.id).query(`
+        SELECT giang_vien_id FROM DangKyHuongDan WHERE sinh_vien_id = @sv_id_check
+      `);
+      if (checkGv.recordset.length === 0) {
+        return res.status(403).json({ message: 'Bạn chưa đăng ký giảng viên hướng dẫn!' });
+      }
+      gv_id = checkGv.recordset[0].giang_vien_id; // Ép gv_id
+    }
+
     const trang_thai = user.role === 'ADMIN' ? 'DA_DUYET' : 'CHO_DUYET';
-    const gv_id = user.role === 'LECTURER' ? user.id : giang_vien_hd_id || null; 
 
     if (!gv_id) {
       return res.status(400).json({ message: 'Vui lòng chọn giảng viên hướng dẫn' });
@@ -432,6 +483,25 @@ export const cancelRegistration = async (req, res) => {
     }
 
     const { de_tai_id } = dkInfo.recordset[0];
+
+    // Kiểm tra thời gian đăng ký của sinh viên
+    const sv_id = req.user?.id;
+    if (sv_id) {
+      const svInfo = await request.input('sv_id_cancel', sql.Int, sv_id).query(`
+        SELECT dt.ngay_bd_dang_ky, dt.ngay_kt_dang_ky 
+        FROM NguoiDung nd 
+        JOIN DotThucTap dt ON nd.dot_thuc_tap_id = dt.id 
+        WHERE nd.id = @sv_id_cancel
+      `);
+      const dotInfo = svInfo.recordset[0];
+      const now = new Date();
+      if (dotInfo?.ngay_bd_dang_ky && dotInfo?.ngay_kt_dang_ky) {
+        if (now < new Date(dotInfo.ngay_bd_dang_ky) || now > new Date(dotInfo.ngay_kt_dang_ky)) {
+          await transaction.rollback();
+          return res.status(403).json({ message: 'Đã hết hạn đăng ký đợt thực tập, không thể hủy!' });
+        }
+      }
+    }
 
     // 2. Giữ lịch sử đăng ký và đánh dấu đã hủy để sinh viên có thể đăng ký lại.
     await request.query(`

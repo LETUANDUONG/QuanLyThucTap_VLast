@@ -20,7 +20,7 @@ import { login } from './controllers/authController.js';
 import { submitReport, gradeReport, getReports, getPendingReports } from './controllers/reportController.js';
 import { getMyNotifications } from './controllers/notificationController.js';
 import { getUsers, createUser, updateUser, deleteUser, getInternships, createInternship, updateInternshipStatus } from './controllers/adminController.js';
-import { getLecturersWithSlots, registerLecturer, getMyLecturerRegistration, updateLecturerQuota } from './controllers/lecturerController.js';
+import { getLecturersWithSlots, registerLecturer, getMyLecturerRegistration, updateLecturerQuota, cancelLecturerRegistration } from './controllers/lecturerController.js';
 import { authMiddleware } from './middleware/authMiddleware.js';
 
 const app = express();
@@ -64,6 +64,7 @@ app.patch('/api/lecturer/registration/:id', updateStatus);
 app.get('/api/lecturer/list-with-slots', getLecturersWithSlots);
 app.post('/api/lecturer/register', registerLecturer);
 app.get('/api/student/my-lecturer', getMyLecturerRegistration);
+app.delete('/api/student/cancel-lecturer', cancelLecturerRegistration);
 app.patch('/api/admin/lecturer/quota', updateLecturerQuota); // Admin điều chỉnh quota
 
 // 6. API Báo cáo

@@ -11,6 +11,12 @@ export const ensureSchema = async () => {
       IF COL_LENGTH('NguoiDung', 'dia_chi') IS NULL
         ALTER TABLE NguoiDung ADD dia_chi nvarchar(255) NULL;
 
+      IF COL_LENGTH('NguoiDung', 'dot_thuc_tap_id') IS NULL
+      BEGIN
+        ALTER TABLE NguoiDung ADD dot_thuc_tap_id int NULL;
+        ALTER TABLE NguoiDung ADD CONSTRAINT FK_NguoiDung_DotThucTap FOREIGN KEY (dot_thuc_tap_id) REFERENCES DotThucTap(id);
+      END
+
       IF COL_LENGTH('DangKyDeTai', 'mo_ta_dang_ky') IS NULL
         ALTER TABLE DangKyDeTai ADD mo_ta_dang_ky nvarchar(max) NULL;
 
@@ -78,6 +84,19 @@ export const ensureSchema = async () => {
           CONSTRAINT FK_ChiTieu_GiangVien FOREIGN KEY (giang_vien_id) REFERENCES NguoiDung(id),
           CONSTRAINT UQ_ChiTieu UNIQUE(giang_vien_id, dot_thuc_tap_id)
         );
+      ELSE
+      BEGIN
+        IF COL_LENGTH('ChiTieuGiangVien', 'so_luong_da_dang_ky') IS NULL
+          ALTER TABLE ChiTieuGiangVien ADD so_luong_da_dang_ky int NOT NULL DEFAULT 0;
+        IF COL_LENGTH('ChiTieuGiangVien', 'dot_thuc_tap_id') IS NULL
+          ALTER TABLE ChiTieuGiangVien ADD dot_thuc_tap_id int NULL;
+        IF COL_LENGTH('ChiTieuGiangVien', 'version') IS NULL
+          ALTER TABLE ChiTieuGiangVien ADD version int NOT NULL DEFAULT 1;
+        IF COL_LENGTH('ChiTieuGiangVien', 'tao_luc') IS NULL
+          ALTER TABLE ChiTieuGiangVien ADD tao_luc datetime NOT NULL DEFAULT GETDATE();
+        IF COL_LENGTH('ChiTieuGiangVien', 'cap_nhat_luc') IS NULL
+          ALTER TABLE ChiTieuGiangVien ADD cap_nhat_luc datetime NOT NULL DEFAULT GETDATE();
+      END
 
       IF OBJECT_ID('DangKyHuongDan', 'U') IS NULL
         CREATE TABLE DangKyHuongDan (
@@ -90,6 +109,11 @@ export const ensureSchema = async () => {
           CONSTRAINT FK_DangKyHD_GiangVien FOREIGN KEY (giang_vien_id) REFERENCES NguoiDung(id),
           CONSTRAINT UQ_DangKyHD UNIQUE(sinh_vien_id, dot_thuc_tap_id)
         );
+      ELSE
+      BEGIN
+        IF COL_LENGTH('DangKyHuongDan', 'dot_thuc_tap_id') IS NULL
+          ALTER TABLE DangKyHuongDan ADD dot_thuc_tap_id int NULL;
+      END
     `);
     console.log('✅ Schema đã được kiểm tra và cập nhật thành công');
   } catch (error) {

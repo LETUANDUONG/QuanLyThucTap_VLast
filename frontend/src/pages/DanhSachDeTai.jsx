@@ -11,6 +11,22 @@ const DanhSachDeTai = () => {
   const [search, setSearch] = useState('');
   const [registeringTopic, setRegisteringTopic] = useState(null);
   const [form] = Form.useForm();
+  const navigate = require('react-router-dom').useNavigate();
+
+  // 0. API Lấy thông tin giảng viên (để kiểm tra xem đã có giảng viên chưa)
+  const { data: myLecturer, isLoading: loadingLecturer } = useQuery({
+    queryKey: ['myLecturerRegistration'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/student/my-lecturer');
+        return res.data.data;
+      } catch (err) {
+        return null;
+      }
+    },
+    enabled: user?.role === 'STUDENT',
+    retry: false
+  });
 
   // 1. API Lấy danh sách đề tài
   const { data: deTais, isLoading } = useQuery({
@@ -152,41 +168,55 @@ const DanhSachDeTai = () => {
   return (
     <div>
       <h2>Danh sách đề tài đang mở</h2>
-      <Input.Search
-        placeholder="Tìm theo tên đề tài, công nghệ hoặc giảng viên"
-        allowClear
-        enterButton="Tìm"
-        style={{ maxWidth: 520, marginBottom: 16 }}
-        onSearch={(value) => setSearch(value)}
-      />
-      
-      {myRegistration && (
+      {user?.role === 'STUDENT' && !loadingLecturer && !myLecturer ? (
         <Alert
-          title="Thông báo: Bạn đã đăng ký 1 đề tài"
-          description={
-            <Space>
-              <span>Bạn chỉ có thể đăng ký 1 đề tài duy nhất. Nếu muốn chọn đề tài khác, vui lòng hủy đề tài hiện tại.</span>
-              <Button 
-                danger 
-                loading={cancelMutation.isPending}
-                onClick={() => cancelMutation.mutate(myRegistration.id)}
-              >
-                Hủy Đăng ký đề tài hiện tại
-              </Button>
-            </Space>
-          }
-          type="info"
+          message="Chưa chọn Giảng viên hướng dẫn"
+          description="Bạn phải đăng ký Giảng viên hướng dẫn trước khi được phép xem và đăng ký đề tài."
+          type="error"
           showIcon
-          style={{ marginBottom: 16 }}
+          action={
+            <Button size="small" type="primary" onClick={() => navigate('/danh-sach-giang-vien')}>
+              Đăng ký ngay
+            </Button>
+          }
         />
-      )}
+      ) : (
+        <>
+          <Input.Search
+            placeholder="Tìm theo tên đề tài, công nghệ hoặc giảng viên"
+            allowClear
+            enterButton="Tìm"
+            style={{ maxWidth: 520, marginBottom: 16 }}
+            onSearch={(value) => setSearch(value)}
+          />
+          
+          {myRegistration && (
+            <Alert
+              message="Thông báo: Bạn đã đăng ký 1 đề tài"
+              description={
+                <Space>
+                  <span>Bạn chỉ có thể đăng ký 1 đề tài duy nhất. Nếu muốn chọn đề tài khác, vui lòng hủy đề tài hiện tại.</span>
+                  <Button 
+                    danger 
+                    loading={cancelMutation.isPending}
+                    onClick={() => cancelMutation.mutate(myRegistration.id)}
+                  >
+                    Hủy Đăng ký đề tài hiện tại
+                  </Button>
+                </Space>
+              }
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+            />
+          )}
 
-      <Table 
-        columns={columns} 
-        dataSource={deTais} 
-        rowKey="id" 
-        loading={isLoading} 
-      />
+          <Table 
+            columns={columns} 
+            dataSource={deTais} 
+            rowKey="id" 
+            loading={isLoading} 
+          />
 
       <Modal
         title={`Đăng ký: ${registeringTopic?.ten_de_tai || ''}`}
@@ -211,6 +241,8 @@ const DanhSachDeTai = () => {
           </Form.Item>
         </Form>
       </Modal>
+        </>
+      )}
     </div>
   );
 };

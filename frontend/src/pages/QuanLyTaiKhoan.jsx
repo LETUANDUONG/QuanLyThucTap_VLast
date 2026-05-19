@@ -18,6 +18,14 @@ const QuanLyTaiKhoan = () => {
     }
   });
 
+  const { data: internships } = useQuery({
+    queryKey: ['adminInternships'],
+    queryFn: async () => {
+      const res = await apiClient.get('/admin/internships');
+      return res.data.data;
+    }
+  });
+
   const saveMutation = useMutation({
     mutationFn: async (values) => {
       if (editingUser) {
@@ -66,6 +74,25 @@ const QuanLyTaiKhoan = () => {
     { title: 'Email', dataIndex: 'email' },
     { title: 'Liên hệ', dataIndex: 'so_dien_thoai' },
     { title: 'Vai trò', dataIndex: 'role' },
+    { 
+      title: 'Đợt thực tập', 
+      render: (_, record) => {
+        if (record.role !== 'STUDENT') return '-';
+        return (
+          <Select
+            style={{ width: 150 }}
+            placeholder="Chưa phân"
+            value={record.dot_thuc_tap_id}
+            onChange={(val) => {
+              const updatedValues = { ...record, dot_thuc_tap_id: val };
+              saveMutation.mutate(updatedValues);
+            }}
+            options={internships?.map(d => ({ label: d.ten_dot, value: d.id }))}
+            allowClear
+          />
+        );
+      }
+    },
     {
       title: 'Thao tác',
       render: (_, record) => (
@@ -105,6 +132,22 @@ const QuanLyTaiKhoan = () => {
               { value: 'LECTURER', label: 'Giảng viên' },
               { value: 'ADMIN', label: 'Giáo vụ (Admin)' }
             ]} />
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => prevValues.role !== currentValues.role}
+          >
+            {({ getFieldValue }) =>
+              getFieldValue('role') === 'STUDENT' ? (
+                <Form.Item name="dot_thuc_tap_id" label="Phân đợt thực tập">
+                  <Select 
+                    placeholder="Chọn đợt thực tập" 
+                    options={internships?.map(d => ({ label: d.ten_dot, value: d.id }))} 
+                    allowClear
+                  />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
           <Form.Item name="lop" label="Lớp (Dành cho Sinh viên)"><Input /></Form.Item>
           <Form.Item name="khoa_hoc" label="Khóa học (Dành cho Sinh viên)"><Input /></Form.Item>

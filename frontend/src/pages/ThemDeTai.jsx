@@ -9,6 +9,20 @@ const ThemDeTai = () => {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
 
+  const { data: myLecturer, isLoading: loadingLecturer } = useQuery({
+    queryKey: ['myLecturerRegistration'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/student/my-lecturer');
+        return res.data.data;
+      } catch (err) {
+        return null;
+      }
+    },
+    enabled: user?.role === 'STUDENT',
+    retry: false,
+  });
+
   const { data: users } = useQuery({
     queryKey: ['adminUsersForTopicForm'],
     queryFn: async () => {
@@ -32,6 +46,24 @@ const ThemDeTai = () => {
     }
   };
 
+  if (user?.role === 'STUDENT' && !loadingLecturer && !myLecturer) {
+    return (
+      <Card title="Tự đề xuất đề tài mới" style={{ maxWidth: 800, margin: '0 auto' }}>
+        <Alert
+          message="Chưa chọn Giảng viên hướng dẫn"
+          description="Bạn phải đăng ký Giảng viên hướng dẫn trước khi được phép tự đề xuất đề tài."
+          type="error"
+          showIcon
+          action={
+            <Button size="small" type="primary" onClick={() => navigate('/danh-sach-giang-vien')}>
+              Đăng ký ngay
+            </Button>
+          }
+        />
+      </Card>
+    );
+  }
+
   return (
     <Card title={user?.role === 'STUDENT' ? 'Tự đề xuất đề tài mới' : 'Thêm đề tài thực tập mới'} style={{ maxWidth: 800, margin: '0 auto' }}>
       <Form layout="vertical" onFinish={onFinish}>
@@ -47,7 +79,7 @@ const ThemDeTai = () => {
           <InputNumber min={1} max={5} />
         </Form.Item>
 
-        {user?.role !== 'LECTURER' && (
+        {user?.role === 'ADMIN' && (
           <Form.Item name="giang_vien_hd_id" label="Giảng viên hướng dẫn" rules={[{ required: true }]}>
             <Select options={lecturerOptions} placeholder="Chọn giảng viên hướng dẫn" />
           </Form.Item>

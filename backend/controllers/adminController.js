@@ -5,7 +5,7 @@ import { connectDb, sql } from '../config/database.js';
 export const getUsers = async (req, res) => {
   try {
     const pool = await connectDb();
-    const result = await pool.request().query('SELECT id, ma_so, ho_ten, email, role, lop, khoa_hoc, chuyen_mon, so_dien_thoai, dia_chi FROM NguoiDung');
+    const result = await pool.request().query('SELECT id, ma_so, ho_ten, email, role, lop, khoa_hoc, chuyen_mon, so_dien_thoai, dia_chi, dot_thuc_tap_id FROM NguoiDung');
     res.status(200).json({ data: result.recordset });
   } catch (error) {
     res.status(500).json({ message: 'Lỗi server', error: error.message });
@@ -13,7 +13,7 @@ export const getUsers = async (req, res) => {
 };
 
 export const createUser = async (req, res) => {
-  const { ma_so, ho_ten, email, role, lop, khoa_hoc, chuyen_mon, so_dien_thoai, dia_chi } = req.body;
+  const { ma_so, ho_ten, email, role, lop, khoa_hoc, chuyen_mon, so_dien_thoai, dia_chi, dot_thuc_tap_id } = req.body;
   try {
     const pool = await connectDb();
     
@@ -37,9 +37,10 @@ export const createUser = async (req, res) => {
       .input('chuyen_mon', sql.NVarChar, chuyen_mon || null)
       .input('so_dien_thoai', sql.VarChar, so_dien_thoai || null)
       .input('dia_chi', sql.NVarChar, dia_chi || null)
+      .input('dot_thuc_tap_id', sql.Int, dot_thuc_tap_id || null)
       .query(`
-        INSERT INTO NguoiDung (ma_so, ho_ten, email, mat_khau, role, lop, khoa_hoc, chuyen_mon, so_dien_thoai, dia_chi)
-        VALUES (@ma_so, @ho_ten, @email, @mat_khau, @role, @lop, @khoa_hoc, @chuyen_mon, @so_dien_thoai, @dia_chi)
+        INSERT INTO NguoiDung (ma_so, ho_ten, email, mat_khau, role, lop, khoa_hoc, chuyen_mon, so_dien_thoai, dia_chi, dot_thuc_tap_id)
+        VALUES (@ma_so, @ho_ten, @email, @mat_khau, @role, @lop, @khoa_hoc, @chuyen_mon, @so_dien_thoai, @dia_chi, @dot_thuc_tap_id)
       `);
       
     res.status(201).json({ message: 'Thêm tài khoản thành công' });
@@ -50,7 +51,7 @@ export const createUser = async (req, res) => {
 
 export const updateUser = async (req, res) => {
   const { id } = req.params;
-  const { ma_so, ho_ten, email, role, lop, khoa_hoc, chuyen_mon, so_dien_thoai, dia_chi } = req.body;
+  const { ma_so, ho_ten, email, role, lop, khoa_hoc, chuyen_mon, so_dien_thoai, dia_chi, dot_thuc_tap_id } = req.body;
   try {
     const pool = await connectDb();
     await pool.request()
@@ -64,11 +65,12 @@ export const updateUser = async (req, res) => {
       .input('chuyen_mon', sql.NVarChar, chuyen_mon || null)
       .input('so_dien_thoai', sql.VarChar, so_dien_thoai || null)
       .input('dia_chi', sql.NVarChar, dia_chi || null)
+      .input('dot_thuc_tap_id', sql.Int, dot_thuc_tap_id || null)
       .query(`
           UPDATE NguoiDung 
           SET ma_so = @ma_so, ho_ten = @ho_ten, email = @email, role = @role, 
             lop = @lop, khoa_hoc = @khoa_hoc, chuyen_mon = @chuyen_mon,
-            so_dien_thoai = @so_dien_thoai, dia_chi = @dia_chi
+            so_dien_thoai = @so_dien_thoai, dia_chi = @dia_chi, dot_thuc_tap_id = @dot_thuc_tap_id
           WHERE id = @id
       `);
     res.status(200).json({ message: 'Cập nhật tài khoản thành công' });

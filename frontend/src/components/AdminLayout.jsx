@@ -77,7 +77,6 @@ const AdminLayout = () => {
       { key: '/dashboard', icon: <DashboardOutlined />, label: 'Thống kê Của tôi' },
       { key: '/quan-ly-de-tai', icon: <BookOutlined />, label: 'Đề tài của tôi' },
       { key: '/sinh-vien', icon: <UserOutlined />, label: 'Duyệt Đăng ký' },
-      { key: '/them-de-tai', icon: <PlusCircleOutlined />, label: 'Đề xuất Đề tài' },
       { key: '/cham-diem', icon: <FileTextOutlined />, label: 'Chấm điểm Báo cáo' },
       { key: '/lich-hen', icon: <CalendarOutlined />, label: 'Lịch hẹn' },
     ] : []),
