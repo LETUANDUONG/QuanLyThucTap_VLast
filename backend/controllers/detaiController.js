@@ -17,13 +17,25 @@ export const dangKyDeTai = async (req, res) => {
             return res.status(400).json({ message: 'Không xác định được sinh viên đăng ký!' });
         }
 
+        // Kiểm tra xem sinh viên đã chọn giảng viên hướng dẫn chưa
+        request.input('sinh_vien_id', sql.Int, studentId);
+        const lecturerCheck = await request.query(`
+            SELECT giang_vien_id FROM DangKyHuongDan WHERE sinh_vien_id = @sinh_vien_id
+        `);
+
+        if (lecturerCheck.recordset.length === 0) {
+            await transaction.rollback();
+            return res.status(400).json({ message: 'Bạn phải chọn giảng viên hướng dẫn trước khi đăng ký đề tài!' });
+        }
+        const gv_id = lecturerCheck.recordset[0].giang_vien_id;
+
         // 1. Lấy thông tin đề tài và version hiện tại
         request.input('de_tai_id', sql.Int, de_tai_id);
         request.input('mo_ta_dang_ky', sql.NVarChar, mo_ta_dang_ky || null);
         request.input('muc_tieu_nghien_cuu', sql.NVarChar, muc_tieu_nghien_cuu || null);
         request.input('cong_nghe_de_xuat', sql.NVarChar, cong_nghe_de_xuat || null);
         const resultDeTai = await request.query(`
-          SELECT dt.so_luong_toi_da, dt.so_luong_da_dang_ky, dt.version, dot.ngay_bd_dang_ky, dot.ngay_kt_dang_ky
+          SELECT dt.so_luong_toi_da, dt.so_luong_da_dang_ky, dt.version, dt.giang_vien_hd_id, dot.ngay_bd_dang_ky, dot.ngay_kt_dang_ky
           FROM DeTai dt
           LEFT JOIN DotThucTap dot ON dt.dot_thuc_tap_id = dot.id
           WHERE dt.id = @de_tai_id
@@ -35,6 +47,12 @@ export const dangKyDeTai = async (req, res) => {
         }
 
         const detai = resultDeTai.recordset[0];
+
+        // Kiểm tra đề tài thuộc về giảng viên đã chọn
+        if (detai.giang_vien_hd_id !== gv_id) {
+            await transaction.rollback();
+            return res.status(400).json({ message: 'Bạn chỉ được đăng ký đề tài của giảng viên hướng dẫn đã chọn!' });
+        }
         const now = new Date();
         
         // 1.1 Kiểm tra thời gian đăng ký của Đợt thực tập
@@ -153,11 +171,23 @@ export const getDanhSachDeTai = async (req, res) => {
     const sv_id = req.user?.id;
     const search = `%${req.query.search || ''}%`;
     
-    // Query lấy danh sách đề tài hợp lệ kèm tên giảng viên hướng dẫn
-    const result = await pool.request()
-      .input('sv_id', sql.Int, sv_id)
-      .input('search', sql.NVarChar, search)
-      .query(`
+    let gv_id = null;
+    if (req.user?.role === 'STUDENT') {
+      const lecturerCheck = await pool.request()
+        .input('sv_id', sql.Int, sv_id)
+        .query('SELECT giang_vien_id FROM DangKyHuongDan WHERE sinh_vien_id = @sv_id');
+
+      if (lecturerCheck.recordset.length === 0) {
+        return res.status(200).json({
+          message: 'Sinh viên chưa đăng ký giảng viên hướng dẫn',
+          data: [],
+          requiresLecturer: true
+        });
+      }
+      gv_id = lecturerCheck.recordset[0].giang_vien_id;
+    }
+
+    let queryStr = `
       SELECT 
         d.id, 
         d.ten_de_tai, 
@@ -171,6 +201,18 @@ export const getDanhSachDeTai = async (req, res) => {
       JOIN DotThucTap dt ON d.dot_thuc_tap_id = dt.id
       WHERE d.trang_thai_duyet = 'DA_DUYET' 
         AND dt.trang_thai = 'ACTIVE'
+    `;
+
+    const request = pool.request()
+      .input('sv_id', sql.Int, sv_id)
+      .input('search', sql.NVarChar, search);
+
+    if (gv_id) {
+      request.input('gv_id', sql.Int, gv_id);
+      queryStr += ` AND d.giang_vien_hd_id = @gv_id`;
+    }
+
+    queryStr += `
         AND (
           d.ten_de_tai LIKE @search
           OR d.cong_nghe_su_dung LIKE @search
@@ -186,7 +228,9 @@ export const getDanhSachDeTai = async (req, res) => {
               AND dk.trang_thai_thuc_hien IN ('CHO_DUYET', 'DA_CHAP_NHAN', 'DANG_THUC_HIEN')
           )
         )
-    `);
+    `;
+
+    const result = await request.query(queryStr);
 
     res.status(200).json({
       message: 'Lấy danh sách thành công',
@@ -313,13 +357,17 @@ export const updateStatus = async (req, res) => {
       await transaction.begin();
       const request = new sql.Request(transaction);
 
-      // Lấy de_tai_id và sinh_vien_id từ bản ghi đăng ký
+      // Lấy de_tai_id, sinh_vien_id và giang_vien_hd_id từ bản ghi đăng ký
       const info = await request.input('dk_id', sql.Int, id).query(`
-        SELECT de_tai_id, sinh_vien_id FROM DangKyDeTai WHERE id = @dk_id
+        SELECT dk.de_tai_id, dk.sinh_vien_id, dt.giang_vien_hd_id 
+        FROM DangKyDeTai dk
+        JOIN DeTai dt ON dk.de_tai_id = dt.id
+        WHERE dk.id = @dk_id
       `);
       
-    const de_tai_id = info.recordset[0].de_tai_id;
-    const sinh_vien_id = info.recordset[0].sinh_vien_id;
+      const de_tai_id = info.recordset[0].de_tai_id;
+      const sinh_vien_id = info.recordset[0].sinh_vien_id;
+      const gv_id = info.recordset[0].giang_vien_hd_id;
 
       // Cập nhật trạng thái đăng ký
       await request
@@ -341,6 +389,17 @@ export const updateStatus = async (req, res) => {
         END
         WHERE id = @dt_id
       `);
+
+      // Nếu giảng viên từ chối hẳn, đồng thời giải phóng quota giảng viên
+      if (status === 'TU_CHOI' && gv_id) {
+        await request.input('gv_id', sql.Int, gv_id).query(`
+          UPDATE ChiTieuGiangVien
+          SET so_luong_da_dang_ky = CASE WHEN so_luong_da_dang_ky > 0 THEN so_luong_da_dang_ky - 1 ELSE 0 END
+          WHERE giang_vien_id = @gv_id;
+          
+          DELETE FROM DangKyHuongDan WHERE sinh_vien_id = @sinh_vien_id;
+        `);
+      }
       
       // Thêm thông báo
       await request.input('sv_id', sql.Int, sinh_vien_id).query(`
@@ -423,7 +482,10 @@ export const cancelRegistration = async (req, res) => {
 
     // 1. Kiểm tra trạng thái đăng ký hiện tại
     const dkInfo = await request.input('dk_id', sql.Int, id).query(`
-      SELECT de_tai_id, trang_thai_thuc_hien FROM DangKyDeTai WHERE id = @dk_id
+      SELECT dk.de_tai_id, dk.trang_thai_thuc_hien, dk.sinh_vien_id, dt.giang_vien_hd_id 
+      FROM DangKyDeTai dk
+      JOIN DeTai dt ON dk.de_tai_id = dt.id
+      WHERE dk.id = @dk_id
     `);
 
     if (dkInfo.recordset.length === 0) {
@@ -431,7 +493,7 @@ export const cancelRegistration = async (req, res) => {
       return res.status(404).json({ message: 'Không tìm thấy đăng ký!' });
     }
 
-    const { de_tai_id } = dkInfo.recordset[0];
+    const { de_tai_id, sinh_vien_id, giang_vien_hd_id } = dkInfo.recordset[0];
 
     // 2. Giữ lịch sử đăng ký và đánh dấu đã hủy để sinh viên có thể đăng ký lại.
     await request.query(`
@@ -449,6 +511,19 @@ export const cancelRegistration = async (req, res) => {
       END
       WHERE id = @dt_id
     `);
+
+    // 4. Giải phóng slot ChiTieuGiangVien và DangKyHuongDan
+    if (giang_vien_hd_id) {
+      await request.input('gv_id', sql.Int, giang_vien_hd_id)
+        .input('sv_id', sql.Int, sinh_vien_id)
+        .query(`
+          UPDATE ChiTieuGiangVien
+          SET so_luong_da_dang_ky = CASE WHEN so_luong_da_dang_ky > 0 THEN so_luong_da_dang_ky - 1 ELSE 0 END
+          WHERE giang_vien_id = @gv_id;
+          
+          DELETE FROM DangKyHuongDan WHERE sinh_vien_id = @sv_id;
+        `);
+    }
 
     await transaction.commit();
     res.status(200).json({ message: 'Đã hủy đăng ký thành công!' });

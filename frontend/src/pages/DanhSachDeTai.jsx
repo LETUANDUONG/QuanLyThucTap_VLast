@@ -1,12 +1,14 @@
 // src/pages/DanhSachDeTai.jsx
 import React, { useState } from 'react';
-import { Table, Tag, Button, message, Alert, Space, Input, Modal, Form } from 'antd';
+import { Table, Tag, Button, message, Alert, Space, Input, Modal, Form, Spin } from 'antd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../services/api';
 import { useAuthStore } from '../store/authStore';
+import { useNavigate } from 'react-router-dom';
 
 const DanhSachDeTai = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const [search, setSearch] = useState('');
   const [registeringTopic, setRegisteringTopic] = useState(null);
@@ -33,6 +35,20 @@ const DanhSachDeTai = () => {
       }
     },
     retry: false
+  });
+
+  // 1.7 API Lấy thông tin giảng viên hướng dẫn đã chọn
+  const { data: myLecturer, isLoading: loadingMyLecturer } = useQuery({
+    queryKey: ['myLecturerRegistration'],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get('/student/my-lecturer');
+        return res.data.data;
+      } catch (err) {
+        return null;
+      }
+    },
+    retry: false,
   });
 
   // 2. API Đăng ký đề tài
@@ -148,6 +164,35 @@ const DanhSachDeTai = () => {
       },
     },
   ];
+
+  if (loadingMyLecturer) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+        <Spin size="large" tip="Đang kiểm tra thông tin..." />
+      </div>
+    );
+  }
+
+  if (!myLecturer) {
+    return (
+      <div style={{ padding: '20px' }}>
+        <h2>Danh sách đề tài đang mở</h2>
+        <Alert
+          message="Yêu cầu chọn giảng viên hướng dẫn"
+          description={
+            <Space direction="vertical" style={{ marginTop: 8 }}>
+              <span>Bạn cần chọn giảng viên hướng dẫn trước khi đăng ký đề tài thực tập.</span>
+              <Button type="primary" onClick={() => navigate('/danh-sach-giang-vien')}>
+                Chọn Giảng Viên Hướng Dẫn
+              </Button>
+            </Space>
+          }
+          type="warning"
+          showIcon
+        />
+      </div>
+    );
+  }
 
   return (
     <div>
